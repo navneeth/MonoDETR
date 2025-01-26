@@ -1,19 +1,17 @@
 import os
 import tqdm
+import time
 import shutil
 
 import torch
-from lib.helpers.save_helper import load_checkpoint
-from lib.helpers.decode_helper import extract_dets_from_outputs
-from lib.helpers.decode_helper import decode_detections
-import time
 
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 from matplotlib.patches import Rectangle
+
 from lib.helpers.save_helper import load_checkpoint
 from lib.helpers.decode_helper import extract_dets_from_outputs
 from lib.helpers.decode_helper import decode_detections
-
 
 class Tester(object):
     def __init__(self, cfg, model, dataloader, logger, train_cfg=None, model_name='monodetr'):
@@ -146,8 +144,7 @@ class Tester(object):
         Args:
             results: Dictionary of detections, keyed by image ID.
         """
-        import matplotlib.pyplot as plt
-        import matplotlib.patches as patches
+
         output_dir = os.path.join(self.output_dir, 'outputs', 'plots')
         os.makedirs(output_dir, exist_ok=True)
 

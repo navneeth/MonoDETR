@@ -8,10 +8,44 @@ from utils import box_ops
 def decode_detections(dets, info, calibs, cls_mean_size, threshold):
     '''
     NOTE: THIS IS A NUMPY FUNCTION
-    input: dets, numpy array, shape in [batch x max_dets x dim]
-    input: img_info, dict, necessary information of input images
-    input: calibs, corresponding calibs for the input batch
-    output:
+    Decode raw detection outputs into meaningful 2D and 3D bounding box predictions.
+
+    Parameters:
+        dets (numpy.ndarray): Array of shape [batch x max_dets x dim], containing raw detection outputs.
+        info (dict): Dictionary containing metadata for input images, with keys:
+            - 'img_size' (list of tuples): Image dimensions for each batch item [(width, height), ...].
+            - 'img_id' (list): List of image IDs for the batch.
+        calibs (list): List of calibration objects for each image in the batch. Each calibration object should
+            implement methods like `img_to_rect()` and `alpha2ry()`.
+        cls_mean_size (numpy.ndarray): Array containing mean sizes (height, width, length) for each object class.
+        threshold (float): Confidence threshold. Detections with scores below this value are ignored.
+
+    Returns:
+        dict: A dictionary where keys are image IDs and values are lists of decoded detections. 
+              Each detection is represented as:
+              [cls_id, alpha, x_min, y_min, x_max, y_max, h, w, l, x, y, z, ry, score]
+
+    Detection Format:
+        Each decoded detection contains the following attributes:
+        - cls_id (int): The class ID of the detected object (e.g., car, pedestrian, etc.).
+        - alpha (float): Observation angle of the object in radians, relative to the camera's centerline.
+        - x_min (float): Left coordinate of the 2D bounding box in image space.
+        - y_min (float): Top coordinate of the 2D bounding box in image space.
+        - x_max (float): Right coordinate of the 2D bounding box in image space.
+        - y_max (float): Bottom coordinate of the 2D bounding box in image space.
+        - h (float): Height of the object in meters (3D dimensions).
+        - w (float): Width of the object in meters (3D dimensions).
+        - l (float): Length of the object in meters (3D dimensions).
+        - x (float): X-coordinate of the object's center in 3D space (left-right position).
+        - y (float): Y-coordinate of the object's center in 3D space (vertical position).
+        - z (float): Z-coordinate of the object's center in 3D space (depth from the camera).
+        - ry (float): Rotation angle of the object around the vertical axis (Y-axis) in radians.
+        - score (float): Confidence score of the detection.
+
+    Note:
+        - The 2D bounding box is decoded using normalized coordinates and scaled to the input image size.
+        - The 3D bounding box is decoded using depth, dimensions, and object center location in real-world space.
+        - `alpha` is the observation angle, while `ry` is the object's rotation angle in 3D space.
     '''
     results = {}
     for i in range(dets.shape[0]):  # batch
@@ -22,32 +56,30 @@ def decode_detections(dets, info, calibs, cls_mean_size, threshold):
             if score < threshold:
                 continue
 
-            # 2d bboxs decoding
+            # 2D bounding box decoding
             x = dets[i, j, 2] * info['img_size'][i][0]
             y = dets[i, j, 3] * info['img_size'][i][1]
             w = dets[i, j, 4] * info['img_size'][i][0]
             h = dets[i, j, 5] * info['img_size'][i][1]
             bbox = [x-w/2, y-h/2, x+w/2, y+h/2]
 
-            # 3d bboxs decoding
+            # 3D bounding box decoding
             # depth decoding
             depth = dets[i, j, 6]
-
             # dimensions decoding
             dimensions = dets[i, j, 31:34]
             dimensions += cls_mean_size[int(cls_id)]
-
             # positions decoding
             x3d = dets[i, j, 34] * info['img_size'][i][0]
             y3d = dets[i, j, 35] * info['img_size'][i][1]
             locations = calibs[i].img_to_rect(x3d, y3d, depth).reshape(-1)
-            locations[1] += dimensions[0] / 2
+            locations[1] += dimensions[0] / 2  # Adjust for the object's height
 
-            # heading angle decoding
+            # Heading angle decoding
             alpha = get_heading_angle(dets[i, j, 7:31])
             ry = calibs[i].alpha2ry(alpha, x)
 
-
+            # Adjust score
             score = score * dets[i, j, -1]
             preds.append([cls_id, alpha] + bbox + dimensions.tolist() + locations.tolist() + [ry, score])
         results[info['img_id'][i]] = preds
