@@ -1,13 +1,9 @@
 import numpy as np
 import cv2
 
-################  Object3D  ##################
+from typing import List
 
-def get_objects_from_label(label_file):
-    with open(label_file, 'r') as f:
-        lines = f.readlines()
-    objects = [Object3d(line) for line in lines]
-    return objects
+################  Object3D  ##################
 
 
 class Object3d(object):
@@ -112,6 +108,11 @@ class Object3d(object):
         return kitti_str
 
 
+def get_objects_from_label(label_file)->List[Object3d]:
+    with open(label_file, 'r') as f:
+        lines = f.readlines()
+    objects = [Object3d(line) for line in lines]
+    return objects
 
 ###################  calibration  ###################
 
