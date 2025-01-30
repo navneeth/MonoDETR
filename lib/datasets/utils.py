@@ -1,7 +1,7 @@
 ''' some auxiliary functions for all datasets '''
 import numpy as np
 import cv2
-
+from PIL import Image, ImageDraw
 
 num_heading_bin = 12  # hyper param
 
@@ -121,4 +121,49 @@ def draw_projected_box3d(image, corners3d, color=(255, 255, 255), thickness=1):
         cv2.line(image, (corners3d[i, 0], corners3d[i, 1]), (corners3d[j, 0], corners3d[j, 1]), color, thickness, lineType=cv2.LINE_AA)
         i, j = k, k + 4
         cv2.line(image, (corners3d[i, 0], corners3d[i, 1]), (corners3d[j, 0], corners3d[j, 1]), color, thickness, lineType=cv2.LINE_AA)
+    return image
+
+def compute_3d_box_cam(h, w, l, x, y, z, yaw):
+    """
+    Return : 3xn in cam2 coordinate
+    """
+    R = np.array([[np.cos(yaw), 0, np.sin(yaw)], [0, 1, 0], [-np.sin(yaw), 0, np.cos(yaw)]])
+    x_corners = [l/2,l/2,-l/2,-l/2,l/2,l/2,-l/2,-l/2]
+    y_corners = [0,0,0,0,-h,-h,-h,-h]
+    z_corners = [w/2,-w/2,-w/2,w/2,w/2,-w/2,-w/2,w/2]
+    corners_3d_cam2 = np.dot(R, np.vstack([x_corners,y_corners,z_corners]))
+    corners_3d_cam2 += np.vstack([x, y, z])
+    return corners_3d_cam2
+
+def draw_projected_box3d(image, qs, color=(255, 255, 255), thickness=2):
+    ''' Draw 3D bounding box in image
+        image: PIL Image object
+        qs: (8,3) array of vertices for the 3D box in the following order:
+            1 -------- 0
+           /|         /|
+          2 -------- 3 .
+          | |        | |
+          . 5 -------- 4
+          |/         |/
+          6 -------- 7
+        color: RGB tuple for line color
+        thickness: Line thickness
+    '''
+    draw = ImageDraw.Draw(image)
+    qs = qs.astype(int)
+
+    # Draw lines connecting vertices
+    for k in range(4):
+        # Draw lines for the top face
+        i, j = k, (k + 1) % 4
+        draw.line([tuple(qs[i, :2]), tuple(qs[j, :2])], fill=color, width=thickness)
+
+        # Draw lines for the bottom face
+        i, j = k + 4, (k + 1) % 4 + 4
+        draw.line([tuple(qs[i, :2]), tuple(qs[j, :2])], fill=color, width=thickness)
+
+        # Draw vertical lines connecting top and bottom faces
+        i, j = k, k + 4
+        draw.line([tuple(qs[i, :2]), tuple(qs[j, :2])], fill=color, width=thickness)
+
     return image

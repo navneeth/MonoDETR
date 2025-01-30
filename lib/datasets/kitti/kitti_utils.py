@@ -188,6 +188,27 @@ class Calibration(object):
         pts_img = (pts_2d_hom[:, 0:2].T / pts_rect_hom[:, 2]).T  # (N, 2)
         pts_rect_depth = pts_2d_hom[:, 2] - self.P2.T[3, 2]  # depth in rect camera coord
         return pts_img, pts_rect_depth
+    
+    def cart2hom(self, pts_3d):
+        ''' Input: nx3 points in Cartesian
+            Oupput: nx4 points in Homogeneous by pending 1
+        '''
+        n = pts_3d.shape[0]
+        pts_3d_hom = np.hstack((pts_3d, np.ones((n,1))))
+        return pts_3d_hom
+    
+    # =========================== 
+    # ------- 3d to 2d ---------- 
+    # =========================== 
+    def project_rect_to_image(self, pts_3d_rect):
+        ''' Input: nx3 points in rect camera coord.
+            Output: nx2 points in image2 coord.
+        '''
+        pts_3d_rect = self.cart2hom(pts_3d_rect)
+        pts_2d = np.dot(pts_3d_rect, np.transpose(self.P2)) # nx3
+        pts_2d[:,0] /= pts_2d[:,2]
+        pts_2d[:,1] /= pts_2d[:,2]
+        return pts_2d[:,0:2]
 
     def lidar_to_img(self, pts_lidar):
         """

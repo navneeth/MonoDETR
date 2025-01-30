@@ -3,6 +3,7 @@ import tqdm
 import time
 import shutil
 
+import numpy as np
 import torch
 
 import matplotlib.pyplot as plt
@@ -12,6 +13,8 @@ from matplotlib.patches import Rectangle
 from lib.helpers.save_helper import load_checkpoint
 from lib.helpers.decode_helper import extract_dets_from_outputs
 from lib.helpers.decode_helper import decode_detections
+
+from lib.datasets.utils import compute_3d_box_cam, draw_projected_box3d
 
 class Tester(object):
     def __init__(self, cfg, model, dataloader, logger, train_cfg=None, model_name='monodetr'):
@@ -113,7 +116,8 @@ class Tester(object):
         self.logger.info('==> Saving ...')
         self.save_results(results)
         # Save plotted results
-        self.save_results_plot(results)
+        #self.save_results_plot(results)
+        self.save_results_plot_3d(results)
 
 
     def save_results(self, results):
@@ -175,6 +179,99 @@ class Tester(object):
             plt.axis('off')
             output_path = os.path.join(output_dir, '{:06d}.png'.format(img_id))
             plt.savefig(output_path, bbox_inches='tight', pad_inches=0)
+            plt.close(fig)
+            
+    def save_results_plot_3d(self, results):
+        """
+        Save plots of detection results with 3D bounding boxes on images.
+        Args:
+            results: Dictionary of detections, keyed by image ID.
+        """
+        output_dir = os.path.join(self.output_dir, 'outputs', 'plots_3d')
+        os.makedirs(output_dir, exist_ok=True)
+
+        for img_id, detections in results.items():
+            # Fetch the original image
+            img = self.dataloader.dataset.get_image(img_id)
+            if img is None:
+                continue
+
+            # Fetch the calibration data for the current image
+            calib = self.dataloader.dataset.get_calib(img_id)  # Use the get_calib function with the image ID
+            if calib is None:
+                continue  # Skip if calibration is unavailable
+
+            fig, ax = plt.subplots(1, figsize=(12, 8))
+            ax.imshow(img)
+            
+            # Set limits based on image size to prevent excessive canvas scaling
+            width, height = img.size  # Get the width and height of the image
+            ax.set_xlim(0, width)  
+            ax.set_ylim(height, 0)  # Flip the y-axis for correct orientation
+            
+            for det in detections:
+                class_name = self.class_name[int(det[0])]
+                # Assuming det contains 3D bounding box [x_min, y_min, x_max, y_max, z_min, z_max]
+                '''
+                0- cls_id (int): The class ID of the detected object (e.g., car, pedestrian, etc.).
+                1- alpha (float): Observation angle of the object in radians, relative to the camera's centerline.
+                2- x_min (float): Left coordinate of the 2D bounding box in image space.
+                3- y_min (float): Top coordinate of the 2D bounding box in image space.
+                4- x_max (float): Right coordinate of the 2D bounding box in image space.
+                5- y_max (float): Bottom coordinate of the 2D bounding box in image space.
+                6- h (float): Height of the object in meters (3D dimensions).
+                7- w (float): Width of the object in meters (3D dimensions).
+                8- l (float): Length of the object in meters (3D dimensions).
+                9- x (float): X-coordinate of the object's center in 3D space (left-right position).
+                10- y (float): Y-coordinate of the object's center in 3D space (vertical position).
+                11- z (float): Z-coordinate of the object's center in 3D space (depth from the camera).
+                12- ry (float): Rotation angle of the object around the vertical axis (Y-axis) in radians.
+                - score (float): Confidence score of the detection.       - x (float): X-coordinate of the object's center in 3D space (left-right position).
+                - y (float): Y-coordinate of the object's center in 3D space (vertical position).
+                - z (float): Z-coordinate of the object's center in 3D space (depth from the camera).
+                - ry (float): Rotation angle of the object around the vertical axis (Y-axis) in radians.
+                - score (float): Confidence score of the detection.
+                '''
+                x_min, y_min, x_max, y_max = det[2:6]  # Extract 2D bounding box coordinates
+                h, w, l, x, y, z, ry = det[6:13]  # Extract 3D bounding box dimensions
+                score = det[-1]  # Extract the detection score
+
+                # Project 3D box to 2D plane (simplified approach)
+                if calib is not None:
+                    # Assuming calib.rect_to_img() can handle 3D points (x, y, z)
+                    # Get the 8 corners of the 3D box (min/max x, y, z)
+                    corners_3d = compute_3d_box_cam(h, w, l, x, y, z, ry)
+
+                    # Project the 3D corners to the 2D image plane
+                    corners_2d = calib.project_rect_to_image(corners_3d.T)
+
+                    # Get the 2D bounding box from projected corners
+                    x_min_proj, y_min_proj = np.min(corners_2d, axis=0)
+                    x_max_proj, y_max_proj = np.max(corners_2d, axis=0)
+                    
+                    # Ensure coordinates are within the image bounds
+                    x_min_proj = max(0, min(x_min_proj, width - 1))
+                    y_min_proj = max(0, min(y_min_proj, height - 1))
+                    x_max_proj = max(0, min(x_max_proj, width - 1))
+                    y_max_proj = max(0, min(y_max_proj, height - 1))
+
+                    # Add the 3D bounding box projection to the plot
+                    rect = patches.Rectangle((x_min_proj, y_min_proj), x_max_proj - x_min_proj, y_max_proj - y_min_proj,
+                                            linewidth=2, edgecolor='blue', facecolor='none', linestyle='dotted')
+                    ax.add_patch(rect)
+                    
+                    draw_projected_box3d(img, corners_2d, color=(255, 0, 255), thickness=1)
+
+                    # Add label for 3D detection
+                    label = f"{class_name} ({score:.2f})"
+                    ax.text(x_min_proj, y_min_proj - 5, label, color='cyan', fontsize=10,
+                            bbox=dict(facecolor='black', alpha=0.5, edgecolor='none'))
+
+            output_path = os.path.join(output_dir, '{:06d}_3d.png'.format(img_id))
+            img.save(output_path.replace(".png", "_3D.png"))
+            plt.axis('off')
+            plt.tight_layout(pad=0.5)  # Minimize excessive whitespace
+            plt.savefig(output_path, bbox_inches='tight', pad_inches=0, dpi=100)
             plt.close(fig)
 
 
