@@ -77,7 +77,7 @@ New and better results in this repo:
 
 ## Installation
 1. Clone this project and create a conda environment:
-    ```
+    ```bash
     git clone https://github.com/ZrrSkywalker/MonoDETR.git
     cd MonoDETR
 
@@ -95,7 +95,7 @@ New and better results in this repo:
     ```
     
 3. Install requirements and compile the deformable attention:
-    ```
+    ```bash
     pip install -r requirements.txt
 
     cd lib/models/monodetr/ops/
@@ -105,7 +105,7 @@ New and better results in this repo:
     ```
     
 4. Make dictionary for saving training losses:
-    ```
+    ```bash
     mkdir logs
     ```
  
@@ -122,7 +122,7 @@ New and better results in this repo:
     You can also change the data path at "dataset/root_dir" in `configs/monodetr.yaml`.
 
 6. (Optional) Check CUDA versions used by pytorch and installed locally:
-    ```
+    ```bash
     python check_cuda.py
     ```
     
